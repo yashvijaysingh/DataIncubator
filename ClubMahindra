@@ -1,0 +1,5 @@
+This competition was hosted by Club Mahindra to predict the number of guests visiting the reosrts located in different geographical locations.
+The ouptut was based on the evaluation of RMSE code. I have used R to arrive at the soltion.
+Packages Used:- dplyr, ggplot2, h2o, neuralnet
+Variables significance - Anova and correlation matrix
+Model Validation - RMSE
