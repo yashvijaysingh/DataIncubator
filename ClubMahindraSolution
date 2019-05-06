@@ -1,0 +1,248 @@
+rm(list=ls())
+setwd("C:/Users/singh yash/Desktop/mahindra")
+
+train.raw <- read.csv(file = "train.csv", header = T, sep = ",")
+test.raw <- read.csv(file = "test.csv", header = T, sep = ",")
+
+# combining train and test data from data processing
+test.raw$amount_spent_per_room_night_scaled <- NA
+
+data.complete <- rbind(train.raw, test.raw)
+View(data.complete)
+str(data.complete)
+
+data.complete$channel_code <- (as.factor(data.complete$channel_code))
+data.complete$main_product_code <- (as.factor(data.complete$main_product_code))
+data.complete$numberofadults <- as.numeric(as.factor(data.complete$numberofadults))
+data.complete$numberofchildren <- as.numeric(as.factor(data.complete$numberofchildren))
+data.complete$persontravellingid <- (as.factor(data.complete$persontravellingid))
+data.complete$resort_region_code <- (as.factor(data.complete$resort_region_code))
+data.complete$resort_type_code <- (as.factor(data.complete$resort_type_code))
+data.complete$room_type_booked_code <- (as.factor(data.complete$room_type_booked_code))
+data.complete$season_holidayed_code <- (as.factor(data.complete$season_holidayed_code))
+data.complete$state_code_resort <- (as.factor(data.complete$state_code_resort))
+data.complete$booking_type_code <- (as.factor(data.complete$booking_type_code))
+data.complete$checkin_date <- as.Date(data.complete$checkin_date, format = "%d/%m/%Y")
+data.complete$checkout_date <- as.Date(data.complete$checkout_date, format = "%d/%m/%Y")
+data.complete$duration <- as.numeric(data.complete$checkout_date - data.complete$checkin_date)
+#data.complete$state_code_residence <- as.factor(data.complete$state_code_residence)
+data.complete$roomnights <- as.numeric(data.complete$roomnights)
+
+# data processing for missing value treatment and outlier treatment and checking the summary stats of the variables
+
+apply(is.na(data.complete),2,sum)
+colSums(is.na(data.complete))
+
+var_summary <- function(x){
+  if(class(x)=="numeric") {
+    var_type = class(x)
+    n = length(x)
+    nmiss = sum(is.na(x))
+    mean = mean(x, na.rm = T)
+    median = median(x, na.rm = T)
+    var = var(x, na.rm = T)
+    sd = sqrt(var)
+    LC1 = mean(x, na.rm = T) - 3*sqrt(var(x, na.rm = T))
+    UC1 = mean(x, na.rm = T) + 3*sqrt(var(x, na.rm = T))
+    pctl = quantile(x,p=c(0,0.01,0.05,0.1,0.9,0.95,0.99,1), na.rm = T)
+    return(c(var_type=var_type, n=n, nmiss=nmiss, mean=mean, median=median, var=var, sd=sd, LC1=LC1, UC1=UC1, pctl=pctl))
+  }
+  else {
+    var_type  = class(x)
+    n = length(x)
+    nmiss = sum(is.na(x))
+    freq = table(x)
+    prop = prop.table(table(x))
+    return(c(var_type=var_type, n=n, nmiss=nmiss, freq=freq, prop=prop))
+  }
+}
+
+num_vars <- sapply(data.complete, is.numeric)
+other_vars <- !sapply(data.complete, is.numeric)
+
+data.complete[num_vars]
+my_num_vars <- t(data.frame(apply(data.complete[num_vars],2,FUN = var_summary)))
+my_other_vars <- apply(data.complete[other_vars],2,FUN = var_summary)
+View(my_num_vars)
+View(my_other_vars)
+
+# outlier, missing and dummy value treatment
+
+data.complete[is.na(data.complete$state_code_residence), "state_code_residence"] <- 8
+data.complete$duration=ifelse(data.complete$duration>6, 7, data.complete$duration)
+data.complete$roomnights=ifelse(data.complete$roomnights>15, 16, data.complete$roomnights)
+data.complete$roomnights=ifelse(data.complete$roomnights<1, 1, data.complete$roomnights)
+data.complete$numberofchildren=ifelse(data.complete$numberofchildren>9, 10, data.complete$numberofchildren)
+data.complete$total_pax=ifelse(data.complete$total_pax>11, 12, data.complete$roomnights)
+data.complete$roomnights=ifelse(data.complete$roomnights<1, 1, data.complete$roomnights)
+data.complete$state_code_residence=ifelse(data.complete$state_code_residence>25, 25,data.complete$state_code_residence)
+data.complete$state_code_residence <- factor(data.complete$state_code_residence)
+data.complete[data.complete$reservationstatusid_code=='D', "reservationstatusid_code"] <- 'C'
+data.complete[data.complete$main_product_code=='7', "main_product_code"] <- '4'
+data.complete[data.complete$persontravellingid=='4995', "persontravellingid"] <- '4753'
+data.complete[data.complete$room_type_booked_code=='6', "room_type_booked_code"] <- '5'
+#data.complete[data.complete$season_holidayed_code=='', "season_holidayed_code"] <- 1
+data.complete[is.na(data.complete$season_holidayed_code), "season_holidayed_code"] <- 1
+data.complete$member_age_buckets <- factor(data.complete$member_age_buckets, levels = c('A','B','C','D','E','F','G','H','I','J'), labels = c(1:10))
+data.complete$cluster_code <- factor(data.complete$cluster_code, levels = c('A','B','C','D','E','F'), labels = c(1:6))
+data.complete$reservationstatusid_code <- factor(data.complete$reservationstatusid_code, levels = c('A','B','C'), labels = c(1:3))
+colSums(is.na(data.complete))
+
+my_num_vars <- t(data.frame(apply(data.complete[num_vars],2,FUN = var_summary)))
+my_cat_vars <- apply(data.complete[other_vars],2,FUN = var_summary)
+
+# data back into training and testing
+train <- data.complete[!is.na(data.complete$amount_spent_per_room_night_scaled),]
+test <- data.complete[is.na(data.complete$amount_spent_per_room_night_scaled),]
+
+# assumptions check
+hist(data.complete$amount_spent_per_room_night_scaled)
+
+# Significance check for the variables
+# factor variables
+anova <- aov(amount_spent_per_room_night_scaled ~ channel_code + main_product_code + persontravellingid + resort_region_code +
+               resort_type_code + room_type_booked_code + season_holidayed_code + state_code_resort + state_code_residence +
+               member_age_buckets + booking_type_code + cluster_code + reservationstatusid_code + resort_id, data = train)
+summary(anova)
+# drop - booking_type_code, reservation_id, booking_date, checkin_date, checkout_date, memberid, 
+
+# numeric variables
+cor_metrics <- cor(train[c(7,8,13,17,24,25)])
+View(cor_metrics)
+
+# drop roomnights or total_pax due to high auto-correlation
+
+# splitting the train data into training and validation
+require(caret)
+set.seed(123)
+indexes <- createDataPartition(train$amount_spent_per_room_night_scaled, times = 1, p =0.7, list = F)
+training <- train[indexes,]
+validation <- train[-indexes,]
+
+
+# fitting the model
+# linear regression
+
+fit <- lm(amount_spent_per_room_night_scaled ~ channel_code + main_product_code + numberofadults + numberofchildren + persontravellingid +
+            resort_region_code + resort_type_code + room_type_booked_code + season_holidayed_code + state_code_residence +
+            state_code_resort + roomnights + member_age_buckets + cluster_code + resort_id + 
+            duration, data = training)
+
+fit <- lm(amount_spent_per_room_night_scaled ~ channel_code + main_product_code + numberofadults + numberofchildren + persontravellingid +
+            resort_region_code + resort_type_code + room_type_booked_code + season_holidayed_code + state_code_residence +
+            state_code_resort + roomnights + member_age_buckets + resort_id +
+            duration, data = training)
+
+
+summary(fit)
+
+train1 <- data.frame(cbind(training, pred_amount_spent_per_room_night_scaled = predict(fit, newdata = training)))
+View(train1)
+
+valid1 <- data.frame(cbind(validation, pred_amount_spent_per_room_night_scaled = predict(fit, newdata = validation)))
+View(valid1)
+
+#RMSE
+sqrt(mean((train1$pred_amount_spent_per_room_night_scaled - train1$amount_spent_per_room_night_scaled)**2))
+sqrt(mean((valid1$pred_amount_spent_per_room_night_scaled - valid1$amount_spent_per_room_night_scaled)**2))
+
+# predicting values for testing dataset
+test$amount_spent_per_room_night_scaled <- predict(fit, newdata = test)
+output <- test[,c(1,24)]
+write.csv(output, file = "output.csv", row.names = F)
+
+# using neural net
+
+library(neuralnet)
+
+training$channel_code <- as.numeric(training$channel_code)
+training$main_product_code <- as.numeric(training$main_product_code)
+training$persontravellingid <- as.numeric(training$persontravellingid)
+training$resort_region_code <- as.numeric(training$resort_region_code)
+training$resort_type_code <- as.numeric(training$resort_type_code)
+training$room_type_booked_code <- as.numeric(training$room_type_booked_code)
+training$season_holidayed_code <- as.numeric(training$season_holidayed_code)
+training$state_code_residence <- as.numeric(training$state_code_residence)
+training$state_code_resort <- as.numeric(training$state_code_resort)
+training$member_age_buckets <- as.numeric(training$member_age_buckets)
+training$cluster_code <- as.numeric(training$cluster_code)
+training$reservationstatusid_code <- as.numeric(training$reservationstatusid_code)
+
+fit <- neuralnet(amount_spent_per_room_night_scaled ~ channel_code + main_product_code + numberofadults + numberofchildren + persontravellingid +
+                   resort_region_code + resort_type_code + room_type_booked_code + season_holidayed_code + state_code_residence +
+                   state_code_resort + roomnights + member_age_buckets +
+                   duration, data = training, hidden = c(4,2), err.fct = "sse", linear.output = TRUE, learningrate = 0.01, threshold = 0.01)
+summary(fit)
+plot(fit)
+
+# saving cleaned data as a csv files
+
+write.csv(training, file = "train_clean.csv", row.names = F)
+write.csv(validation, file = "valid_clean.csv", row.names = F)
+write.csv(test, file = "test_clean.csv", row.names = F)
+
+# using randomforest
+library(h2o)
+h2o.init(
+  nthreads = -1,
+  max_mem_size = "16G"
+)
+h2o.removeAll()
+
+## Load a file from disk
+train_clean <- h2o.importFile(path = normalizePath("train_clean.csv"))
+valid_clean <- h2o.importFile(path = normalizePath("valid_clean.csv"))
+test_clean <- h2o.importFile(path = normalizePath("test_clean.csv"))
+
+#Assignment within H2o
+train_clean <- h2o.assign(train_clean, "train_clean.hex") 
+valid_clean <- h2o.assign(valid_clean, "valid_clean.hex")     
+test_clean <- h2o.assign(test_clean, "test_clean.hex")
+
+rf1 <- h2o.randomForest(        
+  training_frame = train_clean,       
+  validation_frame = valid_clean,     
+  x= c(4,5,6,7,8,9,10,11,12,13,14,15,16,18,25),                       
+  y=24,                         
+  model_id = "rf_mah1",      
+  ntrees = 500,                 
+  max_depth = 15,               
+  stopping_rounds = 15,          
+  stopping_tolerance = 0.0001,    
+  score_each_iteration = T,     
+  seed=5555555)   
+
+rf1 <- h2o.gbm(
+  training_frame = train_clean,    
+  validation_frame = valid_clean,  
+  x=c(4,5,6,7,8,9,10,11,12,13,14,15,16,18,25),                    
+  y=24,                       
+  ntrees = 500,                
+  learn_rate = 0.05,          
+  max_depth = 5,             
+  sample_rate = 0.5,          
+  col_sample_rate = 0.85,       
+  stopping_rounds = 12,         
+  stopping_tolerance = 0.0005,  
+  score_each_iteration = T,   
+  model_id = "gbm_covType3",  
+  seed = 25000000)             
+
+
+#Performance Evaluation
+summary(rf1)    
+rf1@model$training_metrics
+
+amount_spent_per_room_night_scaled <-h2o.predict(
+  object = rf1,
+  newdata = test_clean)
+
+# predicting values for testing dataset
+output <- as.data.frame(amount_spent_per_room_night_scaled)
+output <- cbind(test,output)
+names(output)[26] <- "amount_spent_per_room_night_scaled"
+result_output <- output[c(1,26)]
+
+
+write.csv(result_output, file = "output.csv", row.names = F)
+h2o.shutdown(prompt = F)
